@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Фискальный чек: MAGNUM</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <style>
+        body { font-family: 'Courier New', Courier, monospace; background: #eaeff2; display: flex; flex-direction: column; align-items: center; padding: 20px; }
+        .controls { background: #ffffff; padding: 20px; border-radius: 15px; width: 350px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); margin-bottom: 25px; border: 1px solid #d1d8e0; }
+        h3 { margin-top: 0; color: #2d3436; font-family: sans-serif; text-align: center; }
+        input, select, button { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #dfe6e9; border-radius: 8px; font-size: 14px; box-sizing: border-box; }
+        button { background: #d63031; color: white; border: none; cursor: pointer; font-weight: bold; transition: 0.3s; }
+        button:hover { background: #ae2021; }
+        .btn-alt { background: #2d3436; margin-top: 5px; }
+
+        #receipt-wrap { background: white; padding: 20px; border-radius: 2px; box-shadow: 0 0 20px rgba(0,0,0,0.05); }
+        .receipt { width: 300px; padding: 20px; color: #000; position: relative; }
+        .receipt::after { content: ""; position: absolute; bottom: -15px; left: 0; width: 100%; height: 15px; 
+            background: linear-gradient(-135deg, white 7px, transparent 0), linear-gradient(135deg, white 7px, transparent 0); background-size: 14px 14px; }
+        
+        .header { text-align: center; margin-bottom: 15px; }
+        .magnum-title { font-size: 24px; font-weight: 900; letter-spacing: -1px; }
+        .divider { border-top: 1px dashed #000; margin: 10px 0; }
+        .row { display: flex; justify-content: space-between; margin: 4px 0; font-size: 14px; }
+        .total { font-size: 22px; font-weight: bold; margin-top: 10px; }
+        .qr-area { text-align: center; margin: 15px 0; }
+        .qr-area img { width: 160px; height: 160px; border: 1px solid #eee; padding: 5px; }
+        .footer-text { font-size: 11px; text-align: center; margin-top: 10px; line-height: 1.4; }
+    </style>
+</head>
+<body>
+
+    <div class="controls">
+        <h3>Настройка MAGNUM чека</h3>
+        <input type="text" id="shopName" value="MAGNUM CASH & CARRY" placeholder="Название магазина">
+        <input type="number" id="sumValue" value="12500" placeholder="Сумма">
+        <select id="currency">
+            <option value="₸">Тенге (₸)</option>
+            <option value="₽">Рубль (₽)</option>
+            <option value="$">Доллар ($)</option>
+        </select>
+        <button onclick="download()">📥 Скачать PNG</button>
+        <button class="btn-alt" onclick="sendToPython()">💾 Сохранить в Python</button>
+    </div>
+
+    <div id="receipt-wrap">
+        <div class="receipt" id="myReceipt">
+            <div class="header">
+                <div class="magnum-title" id="out-shop">MAGNUM</div>
+                <div style="font-size: 10px;">БИН: 070440001234</div>
+                <div style="font-size: 10px;">г. Алматы, пр. Абая 44</div>
+            </div>
+
+            <div class="row"><span>Чек:</span><span>№00001954</span></div>
+            <div class="row"><span>Дата:</span><span id="out-date">--.--.----</span></div>
+            <div class="divider"></div>
+            
+            <div class="row"><span>Товары в ассорт.</span><span id="out-subtotal">0.00</span></div>
+            <div class="row" style="font-size: 11px;"><span>1.000 x <span id="out-price">0.00</span></span></div>
+            <div class="divider"></div>
+
+            <div class="row total">
+                <span>ИТОГО:</span>
+                <span><span id="out-total">0</span> <span class="curr">₸</span></span>
+            </div>
+
+            <div class="row"><span>НДС (12%):</span><span><span id="out-tax">0</span> <span class="curr">₸</span></span></div>
+            <div class="row"><span>Оплата:</span><span>Карта Kaspi</span></div>
+
+            <div class="qr-area" id="qr-code">
+                </div>
+
+            <div class="footer-text">
+                <strong>ФИСКАЛЬНЫЙ ЧЕК</strong><br>
+                ООФД: oofd.kz<br>
+                Фискальный признак: 881200344510<br>
+                *** СПАСИБО ЗА ПОКУПКУ! ***
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function update() {
+            const shop = document.getElementById('shopName').value;
+            const sum = parseFloat(document.getElementById('sumValue').value) || 0;
+            const curr = document.getElementById('currency').value;
+            const now = new Date().toLocaleString('ru-RU');
+
+            document.getElementById('out-shop').innerText = shop;
+            document.getElementById('out-total').innerText = sum.toFixed(2);
+            document.getElementById('out-subtotal').innerText = sum.toFixed(2);
+            document.getElementById('out-price').innerText = sum.toFixed(2);
+            document.getElementById('out-date').innerText = now;
+            document.querySelectorAll('.curr').forEach(el => el.innerText = curr);
+
+            // НДС
+            document.getElementById('out-tax').innerText = (sum * 12 / 112).toFixed(2);
+
+            // РАБОЧАЯ ССЫЛКА НА ПРОВЕРКУ
+            const checkUrl = `https://consumer.oofd.kz/ticket/verify?i=${sum}&t=${now.replace(/[^0-9]/g, '')}&s=881200344510`;
+            const qrImgUrl = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(checkUrl)}`;
+            
+            document.getElementById('qr-code').innerHTML = `
+                <a href="${checkUrl}" target="_blank">
+                    <img src="${qrImgUrl}" title="Нажмите для проверки на oofd.kz">
+                </a>`;
+        }
+
+        function download() {
+            html2canvas(document.getElementById('myReceipt')).then(canvas => {
+                let a = document.createElement('a');
+                a.download = 'magnum_check.png';
+                a.href = canvas.toDataURL();
+                a.click();
+            });
+        }
+
+        async function sendToPython() {
+            const data = {
+                shop: document.getElementById('shopName').value,
+                total: document.getElementById('sumValue').value,
+                currency: document.getElementById('currency').value
+            };
+            try {
+                const response = await fetch('/api/save_check', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+                const res = await response.json();
+                alert(res.message);
+            } catch (e) {
+                alert("Ошибка: Сервер Python не запущен!");
+            }
+        }
+
+        document.querySelectorAll('input, select').forEach(el => el.oninput = update);
+        update();
+    </script>
+</body>
+</html>
